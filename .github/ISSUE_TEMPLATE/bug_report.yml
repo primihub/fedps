@@ -1,0 +1,46 @@
+name: Bug Report
+description: Create a report to help us improve
+labels: ['bug']
+
+body:
+- type: markdown
+  attributes:
+    value: Before submitting a bug, please check the existing [issues](https://github.com/primihub/fedps/issues).
+- type: textarea
+  attributes:
+    label: Describe the bug
+    description: A clear and concise description of what the bug is.
+  validations:
+    required: true
+- type: textarea
+  attributes:
+    label: Steps/Code to Reproduce
+    description: Please paste the Reproducing code example.
+    render: python
+  validations:
+    required: true
+- type: textarea
+  attributes:
+    label: Expected Results
+    description: Please describe the expected results.
+    render: shell
+  validations:
+    required: true
+- type: textarea
+  attributes:
+    label: Actual Results
+    description: Please paste the *full* error message starting from line Traceback.
+    render: shell
+  validations:
+    required: true
+- type: textarea
+    attributes:
+      label: Versions
+      render: shell
+      description: |
+        Please run the following and paste the output below.
+        ```python
+        import fedps; fedps.show_versions()
+        ```
+    validations:
+      required: true

@@ -1,0 +1,21 @@
+name: Feature Request
+description: Suggest a new module, enhancement to an existing module
+labels: [feature]
+
+body:
+  - type: textarea
+    attributes:
+      label: Describe the feature you want to enable
+    validations:
+      required: false
+  - type: textarea
+    attributes:
+      label: Describe your proposed solution
+    validations:
+      required: false
+  - type: textarea
+    attributes:
+      label: Describe alternatives you've considered
+  - type: textarea
+    attributes:
+      label: Additional context

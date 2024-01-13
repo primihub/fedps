@@ -34,13 +34,13 @@ body:
   validations:
     required: true
 - type: textarea
-    attributes:
-      label: Versions
-      render: shell
-      description: |
-        Please run the following and paste the output below.
-        ```python
-        import fedps; fedps.show_versions()
-        ```
-    validations:
-      required: true
+  attributes:
+    label: Versions
+    render: shell
+    description: |
+      Please run the following and paste the output below.
+      ```python
+      import fedps; fedps.show_versions()
+      ```
+  validations:
+    required: true

@@ -3,7 +3,7 @@
 **FedPS** is a Python module designed for data preprocessing in Federated Learning, primarily leveraging data sketching techniques.
 
 <div align=center>
-    <img src="doc/overview.svg", alt="image", width="300", height="auto">
+    <img src="doc/overview.svg", alt="Overview", width="40%">
 </div>
 
 ## Installation
@@ -18,7 +18,14 @@
 
 ### Building from source
 
-1. Clone this project
+1. Create a Python env
+
+```bash
+conda create --name fedps python=3.9
+conda activate fedps
+```
+
+2. Clone this project
 
 ```bash
 git clone https://github.com/primihub/fedps.git
@@ -77,7 +84,7 @@ channel = ServerChannel(
 
 2. Specify `FL_type` and `role` in the preprocessor
 
-- `FL_type`: "H" (Horizontal) or "V" (Vertical)
+- `FL_type`: "H" (Horizontal) or "V" (Vertical) federated learning
 
 - `role`: "client" or "server" for HFL; "guest" or "host" for VFL
 
@@ -86,7 +93,7 @@ channel = ServerChannel(
 from fedps.preprocessing import MinMaxScaler
 
 X = [[-1, 2], [-0.5, 6]]
-est = MinMaxScaler(FL_type="H", role="client" channel=channel)
+est = MinMaxScaler(FL_type="H", role="client", channel=channel)
 Xt = est.fit_transform(X)
 print(Xt)
 ```
@@ -96,7 +103,7 @@ print(Xt)
 from fedps.preprocessing import MinMaxScaler
 
 X = [[0, 10], [1, 18]]
-est = MinMaxScaler(FL_type="H", role="client" channel=channel)
+est = MinMaxScaler(FL_type="H", role="client", channel=channel)
 Xt = est.fit_transform(X)
 print(Xt)
 ```
@@ -105,7 +112,7 @@ print(Xt)
 # Server code example
 from fedps.preprocessing import MinMaxScaler
 
-est = MinMaxScaler(FL_type="H", role="server" channel=channel)
+est = MinMaxScaler(FL_type="H", role="server", channel=channel)
 est.fit()
 ```
 

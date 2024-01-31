@@ -3,7 +3,7 @@
 **FedPS** is a Python module designed for data preprocessing in Federated Learning, primarily leveraging data sketching techniques.
 
 <div align=center>
-    <img src="doc/overview.svg", alt="Overview", width="40%">
+    <img src="doc/overview.svg", alt="Overview", width="60%">
 </div>
 
 ## Installation

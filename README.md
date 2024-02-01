@@ -31,7 +31,7 @@ conda activate fedps
 git clone https://github.com/primihub/fedps.git
 ```
 
-2. Build the project
+3. Build the project
 
 ```bash
 cd fedps

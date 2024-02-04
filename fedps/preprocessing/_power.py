@@ -62,9 +62,9 @@ def boxcox_llf(lmb, data):
         # Transform without the constant offset 1/lmb.  The offset does
         # not affect the variance, and the subtraction of the offset can
         # lead to loss of precision.
-        # The sign of lmb at the denominator doesn't affect the variance.
-        logx = lmb * logdata - np.log(abs(lmb))
-        logvar = _log_var(logx)
+        # Division by lmb can be factored out to enhance numerical stability.
+        logx = lmb * logdata
+        logvar = _log_var(logx) - 2 * np.log(abs(lmb))
 
     return (lmb - 1) * np.sum(logdata, axis=0) - n_samples / 2 * logvar
 
@@ -225,16 +225,16 @@ def _log_var_yeojohnson(x, lmb):
     if np.all(x >= 0):
         if abs(lmb) < np.spacing(1.0):
             return np.log(np.var(np.log1p(x), axis=0))
-        # 1. Remove the offset 1/lmb
-        # 2. Add the absolute value sign to the denominator
-        return _log_var(lmb * np.log1p(x) - np.log(abs(lmb)))
+        # 1. Remove the constant offset
+        # 2. Factor out the division term
+        return _log_var(lmb * np.log1p(x)) - 2 * np.log(abs(lmb))
 
     elif np.all(x < 0):
         if abs(lmb - 2) < np.spacing(1.0):
             return np.log(np.var(np.log1p(-x), axis=0))
-        # 1. Remove the offset 1/(2-lmb)
-        # 2. Add the absolute value sign to the denominator
-        return _log_var((2 - lmb) * np.log1p(-x) - np.log(abs(2 - lmb)))
+        # 1. Remove the constant offset
+        # 2. Factor out the division term
+        return _log_var((2 - lmb) * np.log1p(-x)) - 2 * np.log(abs(2 - lmb))
 
     else:  # mixed positive and negtive data
         logyj = np.zeros_like(x, dtype=np.complex128)

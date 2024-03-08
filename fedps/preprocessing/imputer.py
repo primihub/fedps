@@ -69,18 +69,6 @@ class SimpleImputer(_PreprocessBase, _BaseImputer):
             else:
                 fill_value = self.module.fill_value
 
-            # fill_value should be numerical in case of numerical input
-            if (
-                self.module.strategy == "constant"
-                and X.dtype.kind in ("i", "u", "f")
-                and not isinstance(fill_value, numbers.Real)
-            ):
-                raise ValueError(
-                    "'fill_value'={0} is invalid. Expected a "
-                    "numerical value when imputing numerical "
-                    "data".format(fill_value)
-                )
-
         elif self.role == "server":
             fill_value = self.module.fill_value
 

@@ -177,7 +177,7 @@ class QuantileTransformer(_PreprocessBase):
         self.module._validate_params()
         validate_quantile_sketch_params(self)
 
-        if self.module.n_quantiles > self.module.subsample:
+        if self.module.subsample is not None and self.module.n_quantiles > self.module.subsample:
             raise ValueError(
                 "The number of quantiles cannot be greater than"
                 " the number of samples used. Got {} quantiles"
@@ -228,22 +228,24 @@ class QuantileTransformer(_PreprocessBase):
             )
 
         if self.role == "client":
-            subsample_ratio = self.channel.recv("subsample_ratio")
-            if subsample_ratio is not None:
-                X = resample(
-                    X,
-                    replace=False,
-                    n_samples=ceil(subsample_ratio * n_samples),
-                    random_state=self.module.random_state,
-                )
+            if self.module.subsample is not None:
+                subsample_ratio = self.channel.recv("subsample_ratio")
+                if subsample_ratio is not None:
+                    X = resample(
+                        X,
+                        replace=False,
+                        n_samples=ceil(subsample_ratio * n_samples),
+                        random_state=self.module.random_state,
+                    )
 
         elif self.role == "server":
             subsample = self.module.subsample
-            if n_samples > subsample:
-                subsample_ratio = subsample / n_samples
-            else:
-                subsample_ratio = None
-            self.channel.send_all("subsample_ratio", subsample_ratio)
+            if subsample is not None:
+                if n_samples > subsample:
+                    subsample_ratio = subsample / n_samples
+                else:
+                    subsample_ratio = None
+                self.channel.send_all("subsample_ratio", subsample_ratio)
 
         quantiles = col_quantile(
             FL_type="H",

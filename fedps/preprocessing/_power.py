@@ -76,6 +76,8 @@ def boxcox_llf(lmb, data):
 def boxcox_llf_server(lmb, n_samples, constant, channel):
     channel.send_all("lmb", lmb)
     logvar = _log_var_server(n_samples, channel)
+    if lmb != 0:
+        logvar -= 2 * np.log(abs(lmb))
     return (lmb - 1) * constant - n_samples / 2 * logvar
 
 
@@ -84,7 +86,7 @@ def boxcox_llf_client(lmb, data, channel):
         bc = np.array(np.log(data), dtype=np.complex128)
         logbc = np.log(bc)
     else:
-        logbc = lmb * np.log(data) - np.log(abs(lmb))
+        logbc = lmb * np.log(data)
     _log_var_client(logbc, channel)
 
 

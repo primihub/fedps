@@ -31,19 +31,23 @@ def _log_var(logx):
 
 
 def _log_var_server(n_samples, channel):
-    log_sum_sum_square = channel.recv_all("log_sum_sum_square")
-    log_mean_mean_square = special.logsumexp(log_sum_sum_square, axis=0) - np.log(
-        n_samples
-    )
-    log_mean, log_mean_square = log_mean_mean_square[0], log_mean_mean_square[1]
-    return np.real(
-        special.logsumexp([log_mean_square, 2 * log_mean + np.pi * 1j], axis=0)
-    )
+    logsum = channel.recv_all("logsum")
+    logmean = special.logsumexp(logsum, axis=0) - np.log(n_samples)
+    channel.send_all("logmean", logmean)
+
+    logsum_xmu = channel.recv_all("logsum_xmu")
+    return np.real(special.logsumexp(logsum_xmu, axis=0)) - np.log(n_samples)
 
 
 def _log_var_client(logx, channel):
-    log_sum_sum_square = special.logsumexp([logx, 2 * logx], axis=1)
-    channel.send("log_sum_sum_square", log_sum_sum_square)
+    logsum = special.logsumexp(logx, axis=0)
+    channel.send("logsum", logsum)
+    logmean = channel.recv("logmean")
+
+    pij = np.full_like(logx, np.pi * 1j, dtype=np.complex128)
+    logxmu = special.logsumexp([logx, logmean + pij], axis=0)
+    logsum_xmu = special.logsumexp(2 * logxmu, axis=0)
+    channel.send("logsum_xmu", logsum_xmu)
 
 
 def boxcox_llf(lmb, data):

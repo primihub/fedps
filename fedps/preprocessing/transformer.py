@@ -24,11 +24,11 @@ __all__ = ["PowerTransformer", "QuantileTransformer", "SplineTransformer"]
 class PowerTransformer(_PreprocessBase):
     def __init__(
         self,
+        FL_type: str,
+        role: str,
         method="yeo-johnson",
         standardize=True,
         copy=True,
-        FL_type=None,
-        role=None,
         channel=None,
     ):
         super().__init__(FL_type, role, channel)
@@ -145,6 +145,8 @@ class PowerTransformer(_PreprocessBase):
 class QuantileTransformer(_PreprocessBase):
     def __init__(
         self,
+        FL_type: str,
+        role: str,
         n_quantiles=1000,
         output_distribution="uniform",
         ignore_implicit_zeros=False,
@@ -154,8 +156,6 @@ class QuantileTransformer(_PreprocessBase):
         sketch_name="KLL",
         k=200,
         is_hra=True,
-        FL_type=None,
-        role=None,
         channel=None,
     ):
         super().__init__(FL_type, role, channel)
@@ -246,6 +246,7 @@ class QuantileTransformer(_PreprocessBase):
             self.channel.send_all("subsample_ratio", subsample_ratio)
 
         quantiles = col_quantile(
+            FL_type="H",
             role=self.role,
             X=X if self.role == "client" else None,
             quantiles=self.module.references_,
@@ -260,6 +261,8 @@ class QuantileTransformer(_PreprocessBase):
 class SplineTransformer(_PreprocessBase):
     def __init__(
         self,
+        FL_type: str,
+        role: str,
         n_knots=5,
         degree=3,
         knots="uniform",
@@ -270,8 +273,6 @@ class SplineTransformer(_PreprocessBase):
         sketch_name="KLL",
         k=200,
         is_hra=True,
-        FL_type=None,
-        role=None,
         channel=None,
     ):
         super().__init__(FL_type, role, channel)
@@ -410,6 +411,7 @@ class SplineTransformer(_PreprocessBase):
                 start=0, stop=1, num=self.module.n_knots, dtype=np.float64
             )
             knots = col_quantile(
+                FL_type="H",
                 role=self.role,
                 X=X if self.role == "client" else None,
                 quantiles=quantiles,
@@ -423,6 +425,7 @@ class SplineTransformer(_PreprocessBase):
         else:
             # knots == 'uniform':
             x_min, x_max = col_min_max(
+                FL_type="H",
                 role=self.role,
                 X=X if self.role == "client" else None,
                 ignore_nan=False,

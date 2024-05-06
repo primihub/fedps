@@ -26,7 +26,7 @@ __all__ = [
 
 
 class MaxAbsScaler(_PreprocessBase):
-    def __init__(self, copy=True, FL_type=None, role=None, channel=None):
+    def __init__(self, FL_type: str, role: str, copy=True, channel=None):
         super().__init__(FL_type, role, channel)
         if self.FL_type == "H":
             self.check_channel()
@@ -46,6 +46,7 @@ class MaxAbsScaler(_PreprocessBase):
             self.module.n_samples_seen_ = None
 
         max_abs = col_norm(
+            FL_type="H",
             role=self.role,
             X=X if self.role == "client" else None,
             norm="max",
@@ -60,11 +61,11 @@ class MaxAbsScaler(_PreprocessBase):
 class MinMaxScaler(_PreprocessBase):
     def __init__(
         self,
+        FL_type: str,
+        role: str,
         feature_range=(0, 1),
         copy=True,
         clip=False,
-        FL_type=None,
-        role=None,
         channel=None,
     ):
         super().__init__(FL_type, role, channel)
@@ -95,6 +96,7 @@ class MinMaxScaler(_PreprocessBase):
             self.module.n_samples_seen_ = None
 
         data_min, data_max = col_min_max(
+            FL_type="H",
             role=self.role,
             X=X if self.role == "client" else None,
             channel=self.channel,
@@ -111,7 +113,7 @@ class MinMaxScaler(_PreprocessBase):
 
 
 class Normalizer(_PreprocessBase):
-    def __init__(self, norm="l2", copy=True, FL_type=None, role=None, channel=None):
+    def __init__(self, FL_type: str, role: str, norm="l2", copy=True, channel=None):
         super().__init__(FL_type, role, channel)
         if self.FL_type == "V":
             self.check_channel()
@@ -121,35 +123,40 @@ class Normalizer(_PreprocessBase):
         self.module.fit(X)
         return self
 
-    def transform(self, X, copy=None):
+    def transform(self, X=None, copy=None):
         if self.FL_type == "H":
             return self.module.transform(X, copy)
         else:
-            copy = copy if copy is not None else self.module.copy
-            X = self.module._validate_data(X, reset=False)
-            X = check_array(
-                X,
-                copy=copy,
-                estimator="the normalize function",
-                dtype=FLOAT_DTYPES,
-            )
+            if self.role == "client":
+                copy = copy if copy is not None else self.module.copy
+                X = self.module._validate_data(X, reset=False)
+                X = check_array(
+                    X,
+                    copy=copy,
+                    estimator="the normalize function",
+                    dtype=FLOAT_DTYPES,
+                )
 
             norms = row_norm(
+                FL_type="V",
                 role=self.role,
-                X=X,
+                X=X if self.role == "client" else None,
                 norm=self.module.norm,
                 ignore_nan=False,
                 channel=self.channel,
             )
-
             norms = _handle_zeros_in_scale(norms, copy=False)
-            X /= norms[:, np.newaxis]
-            return X
+
+            if self.role == "client":
+                X /= norms[:, np.newaxis]
+                return X
 
 
 class RobustScaler(_PreprocessBase):
     def __init__(
         self,
+        FL_type: str,
+        role: str,
         with_centering=True,
         with_scaling=True,
         quantile_range=(25.0, 75.0),
@@ -158,8 +165,6 @@ class RobustScaler(_PreprocessBase):
         sketch_name="KLL",
         k=200,
         is_hra=True,
-        FL_type=None,
-        role=None,
         channel=None,
     ):
         super().__init__(FL_type, role, channel)
@@ -268,11 +273,11 @@ class RobustScaler(_PreprocessBase):
 class StandardScaler(_PreprocessBase):
     def __init__(
         self,
+        FL_type: str,
+        role: str,
         copy=True,
         with_mean=True,
         with_std=True,
-        FL_type=None,
-        role=None,
         channel=None,
     ):
         super().__init__(FL_type, role, channel)

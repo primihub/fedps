@@ -1,13 +1,14 @@
 import warnings
 import numpy as np
 from sklearn.utils.validation import check_array, FLOAT_DTYPES
-from .util import check_channel, check_role
+from .util import check_channel, check_FL_type, check_role
 from ..sketch import send_local_quantile_sketch, get_global_quantiles, check_quantiles
 
 
 def col_median(
+    FL_type: str,
     role: str,
-    X,
+    X=None,
     sketch_name: str = "KLL",
     k: int = 200,
     is_hra: bool = True,
@@ -15,6 +16,7 @@ def col_median(
     channel=None,
 ):
     return col_quantile(
+        FL_type=FL_type,
         role=role,
         X=X,
         quantiles=0.5,
@@ -27,26 +29,29 @@ def col_median(
 
 
 def col_quantile(
+    FL_type: str,
     role: str,
-    X,
-    quantiles,
+    X=None,
+    quantiles=0.5,
     sketch_name: str = "KLL",
     k: int = 200,
     is_hra: bool = True,
     ignore_nan: bool = True,
     channel=None,
 ):
-    check_role(role)
+    FL_type = check_FL_type(FL_type)
+    role = check_role(role)
 
-    if role == "client":
-        return col_quantile_client(
-            X, quantiles, sketch_name, k, is_hra, ignore_nan, channel
-        )
-    elif role == "server":
-        return col_quantile_server(
-            quantiles, sketch_name, k, is_hra, ignore_nan, channel
-        )
-    elif role in ["guest", "host"]:
+    if FL_type == "H":
+        if role == "client":
+            return col_quantile_client(
+                X, quantiles, sketch_name, k, is_hra, ignore_nan, channel
+            )
+        else:
+            return col_quantile_server(
+                quantiles, sketch_name, k, is_hra, ignore_nan, channel
+            )
+    elif role == "client":
         return col_quantile_client(
             X,
             quantiles,
@@ -57,6 +62,8 @@ def col_quantile(
             send_server=False,
             recv_server=False,
         )
+    else:
+        warnings.warn("Server doesn't have data", RuntimeWarning)
 
 
 def col_quantile_client(

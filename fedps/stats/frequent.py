@@ -4,14 +4,15 @@ from typing import Optional
 from sklearn.utils import is_scalar_nan
 from sklearn.utils._encode import _unique
 from sklearn.preprocessing._encoders import _BaseEncoder
-from .util import check_channel, check_role
+from .util import check_channel, check_FL_type, check_role
 from ..sketch import send_local_fi_sketch, get_global_frequent_items
 from ..sketch.fi import check_frequent_params
 
 
 def col_frequent(
+    FL_type: str,
     role: str,
-    X,
+    X=None,
     error_type: str = "NFN",
     max_item: Optional[int] = None,
     min_freq: int = 1,
@@ -19,15 +20,17 @@ def col_frequent(
     ignore_nan: bool = True,
     channel=None,
 ):
-    check_role(role)
+    FL_type = check_FL_type(FL_type)
+    role = check_role(role)
 
-    if role == "client":
-        return col_frequent_client(X, max_item, min_freq, k, ignore_nan, channel)
-    elif role == "server":
-        return col_frequent_server(
-            error_type, max_item, min_freq, k, ignore_nan, channel
-        )
-    elif role in ["guest", "host"]:
+    if FL_type == "H":
+        if role == "client":
+            return col_frequent_client(X, max_item, min_freq, k, ignore_nan, channel)
+        else:
+            return col_frequent_server(
+                error_type, max_item, min_freq, k, ignore_nan, channel
+            )
+    elif role == "client":
         return col_frequent_client(
             X,
             max_item,
@@ -37,6 +40,8 @@ def col_frequent(
             send_server=False,
             recv_server=False,
         )
+    else:
+        warnings.warn("Server doesn't have data", RuntimeWarning)
 
 
 def col_frequent_client(
@@ -78,7 +83,7 @@ def col_frequent_client(
         server_col_freq, server_col_count = channel.recv("server_col_freq_count")
         return server_col_freq, server_col_count
     else:
-        client_col_freq, client_col_count = []
+        client_col_freq, client_col_count = [], []
         for i in range(n_features):
             items, counts = all_items[i], all_counts[i]
 

@@ -19,6 +19,8 @@ from ..sketch import (
 class SimpleImputer(_PreprocessBase, _BaseImputer):
     def __init__(
         self,
+        FL_type: str,
+        role: str,
         missing_values=np.nan,
         strategy="mean",
         fill_value=None,
@@ -28,8 +30,6 @@ class SimpleImputer(_PreprocessBase, _BaseImputer):
         sketch_name="KLL",
         k=200,
         is_hra=True,
-        FL_type=None,
-        role=None,
         channel=None,
     ):
         super().__init__(FL_type, role, channel)

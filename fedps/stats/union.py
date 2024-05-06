@@ -3,23 +3,27 @@ import numpy as np
 from sklearn.utils import is_scalar_nan
 from sklearn.utils._encode import _unique
 from sklearn.preprocessing._encoders import _BaseEncoder
-from .util import check_channel, check_role
+from .util import check_channel, check_FL_type, check_role
 
 
-def col_union(role: str, X, ignore_nan: bool = True, channel=None):
-    check_role(role)
+def col_union(FL_type: str, role: str, X=None, ignore_nan: bool = True, channel=None):
+    FL_type = check_FL_type(FL_type)
+    role = check_role(role)
 
-    if role == "client":
-        return col_union_client(X, ignore_nan, channel)
-    elif role == "server":
-        return col_union_server(ignore_nan, channel)
-    elif role in ["guest", "host"]:
+    if FL_type == "H":
+        if role == "client":
+            return col_union_client(X, ignore_nan, channel)
+        else:
+            return col_union_server(ignore_nan, channel)
+    elif role == "client":
         return col_union_client(
             X,
             ignore_nan,
             send_server=False,
             recv_server=False,
         )
+    else:
+        warnings.warn("Server doesn't have data", RuntimeWarning)
 
 
 def col_union_client(

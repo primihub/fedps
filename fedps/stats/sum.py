@@ -1,34 +1,37 @@
 import warnings
 import numpy as np
 from sklearn.utils.validation import check_array, FLOAT_DTYPES
-from .util import check_channel, check_role
+from .util import check_channel, check_FL_type, check_role
 
 
-def col_sum(role: str, X, ignore_nan: bool = True, channel=None):
-    check_role(role)
+def col_sum(FL_type: str, role: str, X=None, ignore_nan: bool = True, channel=None):
+    FL_type = check_FL_type(FL_type)
+    role = check_role(role)
 
-    if role == "client":
-        return col_sum_client(X, ignore_nan, channel)
-    elif role == "server":
-        return col_sum_server(ignore_nan, channel)
-    elif role in ["guest", "host"]:
-        return col_sum_client(X, ignore_nan, send_server=False, recv_server=False)
-
-
-def row_sum(role: str, X, ignore_nan: bool = True, channel=None):
-    check_role(role)
-
-    if role == "guest":
-        return row_sum_guest(X, ignore_nan, channel)
-    elif role == "host":
-        return row_sum_host(X, ignore_nan, channel)
+    if FL_type == "H":
+        if role == "client":
+            return col_sum_client(X, ignore_nan, channel)
+        else:
+            return col_sum_server(ignore_nan, channel)
     elif role == "client":
-        return row_sum_host(X, ignore_nan, send_guest=False, recv_guest=False)
-    elif role == "server":
-        warnings.warn(
-            "role server doesn't have data",
-            RuntimeWarning,
-        )
+        return col_sum_client(X, ignore_nan, send_server=False, recv_server=False)
+    else:
+        warnings.warn("Server doesn't have data", RuntimeWarning)
+
+
+def row_sum(FL_type: str, role: str, X=None, ignore_nan: bool = True, channel=None):
+    FL_type = check_FL_type(FL_type)
+    role = check_role(role)
+
+    if FL_type == "V":
+        if role == "client":
+            return row_sum_client(X, ignore_nan, channel)
+        else:
+            return row_sum_server(ignore_nan, channel)
+    elif role == "client":
+        return row_sum_client(X, ignore_nan, send_server=False, recv_server=False)
+    else:
+        warnings.warn("Server doesn't have data", RuntimeWarning)
 
 
 def col_sum_client(
@@ -91,75 +94,61 @@ def col_sum_server(
     return server_col_sum
 
 
-def row_sum_guest(
+def row_sum_client(
     X,
     ignore_nan: bool = True,
     channel=None,
-    send_host: bool = True,
-    recv_host: bool = True,
+    send_server: bool = True,
+    recv_server: bool = True,
 ):
-    check_channel(channel, send_host, recv_host)
+    check_channel(channel, send_server, recv_server)
     X = check_array(
         X, dtype=FLOAT_DTYPES, force_all_finite="allow-nan" if ignore_nan else True
     )
 
     if ignore_nan:
-        guest_row_sum = np.nansum(X, axis=1)
+        client_row_sum = np.nansum(X, axis=1)
     else:
-        guest_row_sum = np.sum(X, axis=1)
+        client_row_sum = np.sum(X, axis=1)
 
-    if send_host:
-        channel.send("guest_row_sum", guest_row_sum)
+    if send_server:
+        channel.send("client_row_sum", client_row_sum)
 
-    if recv_host:
-        if not send_host:
+    if recv_server:
+        if not send_server:
             warnings.warn(
-                "global_row_sum=None because send_host=False",
+                "server_row_sum=None because send_server=False",
                 RuntimeWarning,
             )
-        global_row_sum = channel.recv("global_row_sum")
-        return global_row_sum
+        server_row_sum = channel.recv("server_row_sum")
+        return server_row_sum
     else:
-        return guest_row_sum
+        return client_row_sum
 
 
-def row_sum_host(
-    X,
+def row_sum_server(
     ignore_nan: bool = True,
     channel=None,
-    send_guest: bool = True,
-    recv_guest: bool = True,
+    send_client: bool = True,
+    recv_client: bool = True,
 ):
-    check_channel(channel, send_guest, recv_guest)
-    X = check_array(
-        X, dtype=FLOAT_DTYPES, force_all_finite="allow-nan" if ignore_nan else True
-    )
+    check_channel(channel, send_client, recv_client)
 
-    if ignore_nan:
-        host_row_sum = np.nansum(X, axis=1)
-    else:
-        host_row_sum = np.sum(X, axis=1)
-
-    if recv_guest:
-        guest_row_sum = channel.recv_all("guest_row_sum")
-        guest_row_sum.append(host_row_sum)
+    if recv_client:
+        client_row_sum = channel.recv_all("client_row_sum")
 
         if ignore_nan:
-            global_row_sum = np.nansum(guest_row_sum, axis=0)
+            server_row_sum = np.nansum(client_row_sum, axis=0)
         else:
-            global_row_sum = np.sum(guest_row_sum, axis=0)
+            server_row_sum = np.sum(client_row_sum, axis=0)
     else:
-        global_row_sum = None
+        server_row_sum = None
 
-    if send_guest:
-        if not recv_guest:
+    if send_client:
+        if not recv_client:
             warnings.warn(
-                "global_row_sum=None because recv_guest=False",
+                "server_row_sum=None because recv_client=False",
                 RuntimeWarning,
             )
-        channel.send_all("global_row_sum", global_row_sum)
-
-    if recv_guest:
-        return global_row_sum
-    else:
-        return host_row_sum
+        channel.send_all("server_row_sum", server_row_sum)
+    return server_row_sum

@@ -13,11 +13,11 @@ channel = ServerChannel(
 
 """ KBinsDiscretizer """
 # est = KBinsDiscretizer(
+#     FL_type="H",
+#     role="server",
 #     n_bins=3,
 #     encode="ordinal",
 #     strategy="uniform",
-#     FL_type="H",
-#     role="server",
 #     channel=channel,
 # )
 # est.fit()
@@ -52,16 +52,16 @@ channel = ServerChannel(
 
 """ OneHotEncoder """
 # est = OneHotEncoder(
-#     sparse_output=False,
 #     FL_type="H",
 #     role="server",
+#     sparse_output=False,
 #     channel=channel,
 # )
 # est.fit()
 
 
 """ OrdinalEncoder """
-# est = OneHotEncoder(
+# est = OrdinalEncoder(
 #     FL_type="H",
 #     role="server",
 #     channel=channel,
@@ -115,14 +115,12 @@ est.fit()
 
 
 """ Normalizer """
-# X = [[5, 7, 5, 1]]
 # est = Normalizer(
 #     FL_type="V",
-#     role="host",
+#     role="server",
 #     channel=channel,
 # )
-# Xt = est.fit_transform(X)
-# print(Xt)
+# est.transform()
 
 
 """ PowerTransformer """
@@ -136,9 +134,9 @@ est.fit()
 
 """ QuantileTransformer """
 # est = QuantileTransformer(
-#     n_quantiles=10,
 #     FL_type="H",
 #     role="server",
+#     n_quantiles=10,
 #     channel=channel,
 # )
 # est.fit()
@@ -155,10 +153,10 @@ est.fit()
 
 """ SimpleImputer """
 # est = SimpleImputer(
-#     missing_values=np.nan,
-#     strategy="mean",
 #     FL_type="H",
 #     role="server",
+#     missing_values=np.nan,
+#     strategy="mean",
 #     channel=channel,
 # )
 # est.fit()

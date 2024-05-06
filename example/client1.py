@@ -15,11 +15,11 @@ channel = ClientChannel(
 # X = [[-2, 1, -4, -1],
 #      [-1, 2, -3, -0.5]]
 # est = KBinsDiscretizer(
+#     FL_type="H",
+#     role="client",
 #     n_bins=3,
 #     encode="ordinal",
 #     strategy="uniform",
-#     FL_type="H",
-#     role="client",
 #     channel=channel
 # )
 # Xt = est.fit_transform(X)
@@ -62,9 +62,9 @@ channel = ClientChannel(
 """ OneHotEncoder """
 # X = [["Male", 1], ["Female", 3]]
 # est = OneHotEncoder(
-#     sparse_output=False,
 #     FL_type="H",
 #     role="client",
+#     sparse_output=False,
 #     channel=channel,
 # )
 # Xt = est.fit_transform(X)
@@ -73,7 +73,7 @@ channel = ClientChannel(
 
 """ OrdinalEncoder """
 # X = [["Male", 1], ["Female", 3]]
-# est = OneHotEncoder(
+# est = OrdinalEncoder(
 #     FL_type="H",
 #     role="client",
 #     channel=channel,
@@ -141,10 +141,10 @@ print(Xt)
 
 
 """ Normalizer """
-# X = [[4, 1, 2, 2]]
+# X = [[4, 1], [1, 3], [5, 7]]
 # est = Normalizer(
 #     FL_type="V",
-#     role="guest",
+#     role="client",
 #     channel=channel,
 # )
 # Xt = est.fit_transform(X)
@@ -166,9 +166,9 @@ print(Xt)
 # rng = np.random.RandomState(0)
 # X = rng.normal(loc=0.5, scale=0.25, size=(25, 1))
 # est = QuantileTransformer(
-#     n_quantiles=10,
 #     FL_type="H",
 #     role="client",
+#     n_quantiles=10,
 #     channel=channel,
 # )
 # Xt = est.fit_transform(X)
@@ -189,10 +189,10 @@ print(Xt)
 """ SimpleImputer """
 # X = [[7, 2, 3], [4, np.nan, 6]]
 # est = SimpleImputer(
-#     missing_values=np.nan,
-#     strategy="mean",
 #     FL_type="H",
 #     role="client",
+#     missing_values=np.nan,
+#     strategy="mean",
 #     channel=channel,
 # )
 # Xt = est.fit_transform(X)

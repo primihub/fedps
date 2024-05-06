@@ -86,7 +86,7 @@ channel = ServerChannel(
 
 - `FL_type`: "H" (Horizontal) or "V" (Vertical) federated learning
 
-- `role`: "client" or "server" for HFL; "guest" or "host" for VFL
+- `role`: "client" or "server"
 
 ```python
 # Client1 code example

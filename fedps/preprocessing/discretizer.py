@@ -16,6 +16,8 @@ from ..sketch import (
 class KBinsDiscretizer(_PreprocessBase):
     def __init__(
         self,
+        FL_type: str,
+        role: str,
         n_bins=5,
         encode="onehot",
         strategy="quantile",
@@ -25,8 +27,6 @@ class KBinsDiscretizer(_PreprocessBase):
         sketch_name="KLL",
         k=200,
         is_hra=True,
-        FL_type=None,
-        role=None,
         channel=None,
     ):
         super().__init__(FL_type, role, channel)
@@ -85,6 +85,7 @@ class KBinsDiscretizer(_PreprocessBase):
 
         if self.module.strategy == "uniform":
             data_min, data_max = col_min_max(
+                FL_type="H",
                 role=self.role,
                 X=X if self.role == "client" else None,
                 ignore_nan=False,

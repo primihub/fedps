@@ -12,7 +12,7 @@ __all__ = ["LabelEncoder", "LabelBinarizer", "MultiLabelBinarizer"]
 
 
 class _LabelBase(_PreprocessBase):
-    def __init__(self, FL_type=None, role=None, channel=None):
+    def __init__(self, FL_type: str, role: str, channel=None):
         super().__init__(FL_type, role, channel)
         if self.FL_type == "H":
             self.check_channel()
@@ -37,7 +37,7 @@ class _LabelBase(_PreprocessBase):
 
 
 class LabelEncoder(_LabelBase):
-    def __init__(self, FL_type=None, role=None, channel=None):
+    def __init__(self, FL_type: str, role: str, channel=None):
         super().__init__(FL_type, role, channel)
         self.module = SKL_LabelEncoder()
 
@@ -61,11 +61,11 @@ class LabelEncoder(_LabelBase):
 class LabelBinarizer(_LabelBase):
     def __init__(
         self,
+        FL_type: str,
+        role: str,
         neg_label=0,
         pos_label=1,
         sparse_output=False,
-        FL_type=None,
-        role=None,
         channel=None,
     ):
         super().__init__(FL_type, role, channel)
@@ -116,7 +116,7 @@ class LabelBinarizer(_LabelBase):
 
 class MultiLabelBinarizer(_LabelBase):
     def __init__(
-        self, classes=None, sparse_output=False, FL_type=None, role=None, channel=None
+        self, FL_type: str, role: str, classes=None, sparse_output=False, channel=None
     ):
         super().__init__(FL_type, role, channel)
         self.module = SKL_MultiLabelBinarizer(

@@ -7,7 +7,6 @@ from sklearn.preprocessing._encoders import _BaseEncoder as _SKL_BaseEncoder
 from sklearn.utils import is_scalar_nan
 from sklearn.utils.multiclass import type_of_target
 from sklearn.utils.validation import check_consistent_length, _check_y
-from sklearn.utils._encode import _unique
 from sklearn.utils._param_validation import RealNotInt
 from .base import _PreprocessBase
 from .util import validatea_freq_sketch_params
@@ -20,13 +19,13 @@ __all__ = ["OneHotEncoder", "OrdinalEncoder", "TargetEncoder"]
 class _BaseEncoder(_PreprocessBase, _SKL_BaseEncoder):
     def __init__(
         self,
+        FL_type: str,
+        role: str,
         categories="auto",
         min_frequency=None,
         max_categories=None,
         error_type="NFN",
         k=20,
-        FL_type=None,
-        role=None,
         channel=None,
     ):
         super().__init__(FL_type, role, channel)
@@ -243,6 +242,8 @@ class _BaseEncoder(_PreprocessBase, _SKL_BaseEncoder):
 class OneHotEncoder(_BaseEncoder):
     def __init__(
         self,
+        FL_type: str,
+        role: str,
         categories="auto",
         drop=None,
         sparse_output=True,
@@ -253,18 +254,16 @@ class OneHotEncoder(_BaseEncoder):
         feature_name_combiner="concat",
         error_type="NFN",
         k=20,
-        FL_type=None,
-        role=None,
         channel=None,
     ):
         super().__init__(
+            FL_type=FL_type,
+            role=role,
             categories=categories,
             min_frequency=min_frequency,
             max_categories=max_categories,
             error_type=error_type,
             k=k,
-            FL_type=FL_type,
-            role=role,
             channel=channel,
         )
         self.module = SKL_OneHotEncoder(
@@ -291,6 +290,8 @@ class OneHotEncoder(_BaseEncoder):
 class OrdinalEncoder(_BaseEncoder):
     def __init__(
         self,
+        FL_type: str,
+        role: str,
         categories="auto",
         dtype=np.float64,
         handle_unknown="error",
@@ -300,18 +301,16 @@ class OrdinalEncoder(_BaseEncoder):
         max_categories=None,
         error_type="NFN",
         k=20,
-        FL_type=None,
-        role=None,
         channel=None,
     ):
         super().__init__(
+            FL_type=FL_type,
+            role=role,
             categories=categories,
             min_frequency=min_frequency,
             max_categories=max_categories,
             error_type=error_type,
             k=k,
-            FL_type=FL_type,
-            role=role,
             channel=channel,
         )
         self.module = SKL_OrdinalEncoder(
@@ -414,14 +413,14 @@ class OrdinalEncoder(_BaseEncoder):
 class TargetEncoder(_PreprocessBase, _SKL_BaseEncoder, auto_wrap_output_keys=None):
     def __init__(
         self,
+        FL_type: str,
+        role: str,
         categories="auto",
         target_type="auto",
         smooth="auto",
         cv=5,
         shuffle=True,
         random_state=None,
-        FL_type=None,
-        role=None,
         channel=None,
     ):
         super().__init__(FL_type, role, channel)

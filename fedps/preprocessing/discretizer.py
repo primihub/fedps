@@ -44,6 +44,18 @@ class KBinsDiscretizer(_PreprocessBase):
             random_state=random_state,
         )
 
+    def _rm_bins_small_width(self, jj, bin_edges, n_bins):
+        # Remove bins whose width are too small (i.e., <= 1e-8)
+        mask = np.ediff1d(bin_edges[jj], to_begin=np.inf) > 1e-8
+        bin_edges[jj] = bin_edges[jj][mask]
+        if len(bin_edges[jj]) - 1 != n_bins[jj]:
+            warnings.warn(
+                "Bins whose width are too small (i.e., <= "
+                "1e-8) in feature %d are removed. Consider "
+                "decreasing the number of bins." % jj
+            )
+            n_bins[jj] = len(bin_edges[jj]) - 1
+
     def Hfit(self, X):
         self.module._validate_params()
         validate_quantile_sketch_params(self)
@@ -83,7 +95,7 @@ class KBinsDiscretizer(_PreprocessBase):
             elif self.role == "server":
                 output_dtype = np.float64
 
-        if self.module.strategy == "uniform":
+        if self.module.strategy in ("uniform", "kmeans"):
             data_min, data_max = col_min_max(
                 FL_type="H",
                 role=self.role,
@@ -109,7 +121,32 @@ class KBinsDiscretizer(_PreprocessBase):
                     bin_edges[jj] = np.array([-np.inf, np.inf])
                     continue
 
-                bin_edges[jj] = np.linspace(col_min, col_max, n_bins[jj] + 1)
+                if self.module.strategy == "uniform":
+                    bin_edges[jj] = np.linspace(col_min, col_max, n_bins[jj] + 1)
+                else:  # "kmeans"
+                    from ..model import KMeans
+
+                    # Deterministic initialization with uniform spacing
+                    uniform_edges = np.linspace(col_min, col_max, n_bins[jj] + 1)
+                    init = (uniform_edges[1:] + uniform_edges[:-1])[:, None] * 0.5
+
+                    # 1D k-means procedure
+                    km = KMeans(
+                        FL_type="H",
+                        role=self.role,
+                        channel=self.channel,
+                        n_clusters=n_bins[jj],
+                        init=init,
+                        n_init=1,
+                    )
+                    centers = km.fit(
+                        X[:, jj][:, None] if self.role == "client" else None
+                    ).module.cluster_centers_[:, 0]
+                    # Must sort, centers may be unsorted even with sorted init
+                    centers.sort()
+                    bin_edges[jj] = (centers[1:] + centers[:-1]) * 0.5
+                    bin_edges[jj] = np.r_[col_min, bin_edges[jj], col_max]
+                    self._rm_bins_small_width(jj, bin_edges, n_bins)
 
         elif self.module.strategy == "quantile":
             if self.role == "client":
@@ -169,21 +206,9 @@ class KBinsDiscretizer(_PreprocessBase):
                     elif self.sketch_name == "REQ":
                         bin_edges[jj] = np.array(sketch[jj].get_quantiles(quantiles))
 
-                    # Remove bins whose width are too small (i.e., <= 1e-8)
-                    mask = np.ediff1d(bin_edges[jj], to_begin=np.inf) > 1e-8
-                    bin_edges[jj] = bin_edges[jj][mask]
-                    if len(bin_edges[jj]) - 1 != n_bins[jj]:
-                        warnings.warn(
-                            "Bins whose width are too small (i.e., <= "
-                            "1e-8) in feature %d are removed. Consider "
-                            "decreasing the number of bins." % jj
-                        )
-                        n_bins[jj] = len(bin_edges[jj]) - 1
+                    self._rm_bins_small_width(jj, bin_edges, n_bins)
 
                 self.channel.send_all("bin_edges", bin_edges)
-
-        elif self.module.strategy == "kmeans":
-            raise ValueError("strategy 'kmeans' is unsupported yet")
 
         self.module.bin_edges_ = bin_edges
         self.module.n_bins_ = n_bins

@@ -48,3 +48,12 @@ def show_versions():
     print("\nPython dependencies:")
     for k, stat in deps_info.items():
         print("{k:>13}: {stat}".format(k=k, stat=stat))
+
+
+def import_is_scalar_nan():
+    try:
+        # sklearn >= 1.5
+        from sklearn.utils._missing import is_scalar_nan
+    except ImportError:
+        from sklearn.utils import is_scalar_nan
+    return is_scalar_nan

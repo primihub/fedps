@@ -1,7 +1,5 @@
-import numbers
 import numpy as np
 from sklearn.impute import SimpleImputer as SKL_SimpleImputer
-from sklearn.impute._base import _BaseImputer
 from sklearn.utils._encode import _unique
 from sklearn.utils._mask import _get_mask
 from .base import _PreprocessBase
@@ -16,7 +14,7 @@ from ..sketch import (
 )
 
 
-class SimpleImputer(_PreprocessBase, _BaseImputer):
+class SimpleImputer(_PreprocessBase):
     def __init__(
         self,
         FL_type: str,
@@ -46,11 +44,6 @@ class SimpleImputer(_PreprocessBase, _BaseImputer):
             add_indicator=add_indicator,
             keep_empty_features=keep_empty_features,
         )
-        if FL_type == "H":
-            self.missing_values = missing_values
-            self.strategy = strategy
-            self.copy = copy
-            self.add_indicator = add_indicator
 
     def Hfit(self, X):
         self.module._validate_params()
@@ -78,11 +71,9 @@ class SimpleImputer(_PreprocessBase, _BaseImputer):
     def _dense_fit(self, X, strategy, fill_value):
         """Fit the transformer on dense data."""
         if self.role == "client":
-            missing_mask = _get_mask(X, self.missing_values)
+            missing_mask = _get_mask(X, self.module.missing_values)
             masked_X = np.ma.masked_array(X, mask=missing_mask)
-
-            super()._fit_indicator(missing_mask)
-            self.module.indicator_ = self.indicator_
+            self.module._fit_indicator(missing_mask)
 
         # Mean
         if strategy == "mean":

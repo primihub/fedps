@@ -151,6 +151,26 @@ est.fit()
 # est.fit()
 
 
+""" KNNImputer (H) """
+# est = KNNImputer(
+#     FL_type="H",
+#     role="server",
+#     n_neighbors=2,
+#     channel=channel,
+# )
+# est.fit_transform()
+
+
+""" KNNImputer (V) """
+# est = KNNImputer(
+#     FL_type="V",
+#     role="server",
+#     n_neighbors=2,
+#     channel=channel,
+# )
+# est.fit_transform()
+
+
 """ SimpleImputer """
 # est = SimpleImputer(
 #     FL_type="H",

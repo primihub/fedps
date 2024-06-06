@@ -186,6 +186,30 @@ print(Xt)
 # print(Xt)
 
 
+""" KNNImputer (H) """
+# X = [[1, 2, np.nan], [3, 4, 3]]
+# est = KNNImputer(
+#     FL_type="H",
+#     role="client",
+#     n_neighbors=2,
+#     channel=channel,
+# )
+# Xt = est.fit_transform(X)
+# print(Xt)
+
+
+""" KNNImputer (V) """
+# X = [[1, 2], [3, 4], [np.nan, 6], [8, 8]]
+# est = KNNImputer(
+#     FL_type="V",
+#     role="client",
+#     n_neighbors=2,
+#     channel=channel,
+# )
+# Xt = est.fit_transform(X)
+# print(Xt)
+
+
 """ SimpleImputer """
 # X = [[7, 2, 3], [4, np.nan, 6]]
 # est = SimpleImputer(

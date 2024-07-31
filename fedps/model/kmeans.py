@@ -60,6 +60,9 @@ class KMeans(_ModelBase):
             copy_x=copy_x,
         )
 
+    def fit_predict(self, X):
+        return self.fit(X).predict(X)
+
     def _check_n_init(self, default_n_init=None):
         # n-init
         if self.module.n_init == "auto":

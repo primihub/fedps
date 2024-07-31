@@ -89,7 +89,7 @@ class ServerChannel:
         # Send to selected clients with same data via idx
         print(f"send_selected {idx}: {key}")
         data = pickle.dumps((key, val))
-        if isinstance(idx, int):
+        if not hasattr(idx, "__len__"):
             idx = [idx]
         for i in idx:
             self.send_channel[i].send(data)
@@ -97,7 +97,7 @@ class ServerChannel:
     def recv_selected(self, key: str, idx: Union[int, list[int]]):
         # Receive from selected clients via idx
         print(f"recv_selected {idx}: {key}")
-        is_idx_int = isinstance(idx, int)
+        is_idx_int = not hasattr(idx, "__len__")
         for _ in range(1 if is_idx_int else len(idx)):
             k, v = pickle.loads(self.recv_channel.recv())
             self.recv_buffer[k] = v

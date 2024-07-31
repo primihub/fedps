@@ -1,3 +1,4 @@
+from sklearn.base import clone
 from .stats.util import check_FL_type, check_role
 
 
@@ -25,3 +26,7 @@ class _Base:
             return self.Vfit(X)
         else:
             return self.Hfit(X)
+
+    def __sklearn_clone__(self):
+        self.module = clone(self.module)
+        return self

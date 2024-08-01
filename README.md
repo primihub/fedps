@@ -1,6 +1,12 @@
 # FedPS
 
-**FedPS** is a Python module designed for data preprocessing in Federated Learning, primarily leveraging data sketching techniques.
+FedPS is a Python module designed for data preprocessing in Federated Learning, primarily leveraging aggregated statistics. The preprocessing workflow involves the following five steps:
+
+1. Local Statistics Estimation: Clients estimate local statistics from their local data.
+2. Aggregation: The server receives the local statistics and performs aggregation.
+3. Global Parameter Calculation: The server calculates the global preprocessing parameters.
+4. Parameter Distribution: Clients receive the preprocessing parameters from the server.
+5. Data Preprocessing: Clients apply the preprocessing to their local data.
 
 <div align=center>
     <img src="doc/overview.svg", alt="Overview", width="60%">
@@ -36,15 +42,6 @@ git clone https://github.com/primihub/fedps.git
 ```bash
 cd fedps
 pip install .
-```
-
-## Quick start
-
-```bash
-# Run in three terminals
-python example/client1.py
-python example/client2.py
-python example/server.py
 ```
 
 ## Usage
@@ -84,7 +81,7 @@ channel = ServerChannel(
 
 2. Specify `FL_type` and `role` in the preprocessor
 
-- `FL_type`: "H" (Horizontal) or "V" (Vertical) federated learning
+- `FL_type`: "H" (Horizontal) or "V" (Vertical)
 
 - `role`: "client" or "server"
 
@@ -118,6 +115,15 @@ est.fit()
 
 3. Run the script
 
+```bash
+# Run in three terminals
+python client1.py
+python client2.py
+python server.py
+```
+
+PS: See more cases in the [example](example) folder.
+
 ## Available preprocessing modules
 
 - Discretization
@@ -146,6 +152,13 @@ est.fit()
 - Imputation
   - [`KNNImputer`](https://scikit-learn.org/stable/modules/generated/sklearn.impute.KNNImputer.html)
   - [`SimpleImputer`](https://scikit-learn.org/stable/modules/generated/sklearn.impute.SimpleImputer.html)
+
+## Differences from Scikit-learn
+
+- Currently, this library does not support sparse data.
+- [`KBinsDiscretizer`](https://scikit-learn.org/stable/modules/generated/sklearn.preprocessing.KBinsDiscretizer.html), [`StandardScaler`](https://scikit-learn.org/stable/modules/generated/sklearn.preprocessing.StandardScaler.html), and [`SplineTransformer`](https://scikit-learn.org/stable/modules/generated/sklearn.preprocessing.SplineTransformer.html) cannot set the `sample_weight` parameter in their fit methods.
+- [`KNNImputer`](https://scikit-learn.org/stable/modules/generated/sklearn.impute.KNNImputer.html) does not support custom weight funtion and distance metric.
+- [`SimpleImputer`](https://scikit-learn.org/stable/modules/generated/sklearn.impute.SimpleImputer.html) does not support custom imputation strategy.
 
 ## License
 

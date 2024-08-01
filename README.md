@@ -10,8 +10,8 @@
 
 ### Dependencies
 
-- Python (>= 3.8)
-- Scikit-learn (>= 1.3)
+- Python (>= 3.9)
+- Scikit-learn (>= 1.4)
 - NumPy (>= 1.20)
 - DataSketches
 - PyZMQ

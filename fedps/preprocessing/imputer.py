@@ -11,7 +11,7 @@ from sklearn.impute._base import _check_inputs_dtype
 from sklearn.impute._iterative import _assign_where, _ImputerTriplet
 from sklearn.metrics import pairwise_distances_chunked
 from sklearn.neighbors._base import _get_weights
-from sklearn.utils import _safe_assign, _safe_indexing, check_random_state
+from sklearn.utils import _safe_indexing, check_random_state
 from sklearn.utils._encode import _unique
 from sklearn.utils._mask import _get_mask
 from sklearn.utils.validation import FLOAT_DTYPES, check_is_fitted
@@ -26,9 +26,10 @@ from ..sketch import (
     get_frequent_items,
 )
 from ..stats.norm import col_norm_client, col_norm_server
-from ..util import import_is_scalar_nan
+from ..util import import_is_scalar_nan, import_safe_assign
 
 is_scalar_nan = import_is_scalar_nan()
+_safe_assign = import_safe_assign()
 
 
 class IterativeImputer(_PreprocessBase):

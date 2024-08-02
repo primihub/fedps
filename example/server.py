@@ -151,6 +151,24 @@ est.fit()
 # est.fit()
 
 
+""" IterativeImputer (H) """
+# est = IterativeImputer(
+#     FL_type="H",
+#     role="server",
+#     channel=channel,
+# )
+# est.fit()
+
+
+""" IterativeImputer (V) """
+# est = IterativeImputer(
+#     FL_type="V",
+#     role="server",
+#     channel=channel,
+# )
+# est.fit_transform()
+
+
 """ KNNImputer (H) """
 # est = KNNImputer(
 #     FL_type="H",

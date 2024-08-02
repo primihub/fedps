@@ -1,4 +1,5 @@
 import numpy as np
+from typing import Callable
 from sklearn.impute import KNNImputer as SKL_KNNImputer
 from sklearn.impute import SimpleImputer as SKL_SimpleImputer
 from sklearn.metrics import pairwise_distances_chunked
@@ -785,3 +786,11 @@ class SimpleImputer(_PreprocessBase):
                 return np.full(X.shape[1], fill_value, dtype=X.dtype)
             elif self.role == "server":
                 return fill_value
+
+        # Custom
+        elif isinstance(strategy, Callable):
+            if self.role == "client":
+                statistics = strategy(masked_X, self.channel)
+            elif self.role == "server":
+                statistics = strategy(self.channel)
+            return statistics

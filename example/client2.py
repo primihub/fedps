@@ -184,6 +184,28 @@ print(Xt)
 # print(Xt)
 
 
+""" IterativeImputer (H) """
+# X = [[np.nan, 6, 5], [8, 8, 7]]
+# est = IterativeImputer(
+#     FL_type="H",
+#     role="client",
+#     channel=channel,
+# )
+# Xt = est.fit_transform(X)
+# print(Xt)
+
+
+""" IterativeImputer (V) """
+# X = [[np.nan], [3], [5], [7]]
+# est = IterativeImputer(
+#     FL_type="V",
+#     role="client",
+#     channel=channel,
+# )
+# Xt = est.fit_transform(X)
+# print(Xt)
+
+
 """ KNNImputer (H) """
 # X = [[np.nan, 6, 5], [8, 8, 7]]
 # est = KNNImputer(

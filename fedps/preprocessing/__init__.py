@@ -1,6 +1,6 @@
 from .discretizer import KBinsDiscretizer
 from .encoder import OneHotEncoder, OrdinalEncoder, TargetEncoder
-from .imputer import KNNImputer, SimpleImputer
+from .imputer import IterativeImputer, KNNImputer, SimpleImputer
 from .label import LabelEncoder, LabelBinarizer, MultiLabelBinarizer
 from .scaler import (
     MaxAbsScaler,
@@ -16,6 +16,7 @@ __all__ = [
     "OneHotEncoder",
     "OrdinalEncoder",
     "TargetEncoder",
+    "IterativeImputer",
     "KNNImputer",
     "SimpleImputer",
     "LabelEncoder",

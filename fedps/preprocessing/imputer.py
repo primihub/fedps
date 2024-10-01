@@ -1,9 +1,18 @@
+import warnings
 import numpy as np
 from typing import Callable
+from time import time
+from sklearn.base import clone
+from sklearn.exceptions import ConvergenceWarning
+from sklearn.experimental import enable_iterative_imputer
+from sklearn.impute import IterativeImputer as SKL_IterativeImputer
 from sklearn.impute import KNNImputer as SKL_KNNImputer
 from sklearn.impute import SimpleImputer as SKL_SimpleImputer
+from sklearn.impute._base import _check_inputs_dtype
+from sklearn.impute._iterative import _assign_where, _ImputerTriplet
 from sklearn.metrics import pairwise_distances_chunked
 from sklearn.neighbors._base import _get_weights
+from sklearn.utils import _safe_indexing, check_random_state
 from sklearn.utils._encode import _unique
 from sklearn.utils._mask import _get_mask
 from sklearn.utils.validation import FLOAT_DTYPES, check_is_fitted
@@ -17,9 +26,832 @@ from ..sketch import (
     merge_local_fi_sketch,
     get_frequent_items,
 )
-from ..util import import_is_scalar_nan
+from ..stats.norm import col_norm_client, col_norm_server
+from ..util import import_is_scalar_nan, import_safe_assign
 
 is_scalar_nan = import_is_scalar_nan()
+_safe_assign = import_safe_assign()
+
+
+class IterativeImputer(_PreprocessBase):
+    def __init__(
+        self,
+        FL_type: str,
+        role: str,
+        estimator=None,
+        missing_values=np.nan,
+        max_iter=10,
+        tol=1e-3,
+        initial_strategy="mean",
+        fill_value=None,
+        imputation_order="ascending",
+        skip_complete=False,
+        min_value=-np.inf,
+        max_value=np.inf,
+        verbose=0,
+        random_state=None,
+        add_indicator=False,
+        keep_empty_features=False,
+        channel=None,
+    ):
+        super().__init__(FL_type, role, channel)
+        self.check_channel()
+        self.module = SKL_IterativeImputer(
+            estimator=estimator,
+            missing_values=missing_values,
+            max_iter=max_iter,
+            tol=tol,
+            initial_strategy=initial_strategy,
+            fill_value=fill_value,
+            imputation_order=imputation_order,
+            skip_complete=skip_complete,
+            min_value=min_value,
+            max_value=max_value,
+            verbose=verbose,
+            random_state=random_state,
+            add_indicator=add_indicator,
+            keep_empty_features=keep_empty_features,
+        )
+
+    def fit(self, X=None):
+        self.fit_transform(X)
+        return self
+
+    def _initial_imputation(self, X, in_fit=False):
+        if self.FL_type == "V" and self.role == "server":
+            return
+
+        if is_scalar_nan(self.module.missing_values):
+            force_all_finite = "allow-nan"
+        else:
+            force_all_finite = True
+
+        if self.role == "client":
+            X = self.module._validate_data(
+                X,
+                dtype=FLOAT_DTYPES,
+                order="F",
+                reset=in_fit,
+                force_all_finite=force_all_finite,
+            )
+            _check_inputs_dtype(X, self.module.missing_values)
+
+            X_missing_mask = _get_mask(X, self.module.missing_values)
+            mask_missing_values = X_missing_mask.copy()
+
+        if self.module.initial_imputer_ is None:
+            self.module.initial_imputer_ = SimpleImputer(
+                FL_type=self.FL_type,
+                role=self.role,
+                channel=self.channel,
+                missing_values=self.module.missing_values,
+                strategy=self.module.initial_strategy,
+                fill_value=self.module.fill_value,
+                keep_empty_features=self.module.keep_empty_features,
+            )
+            self.module.initial_imputer_.module.set_output(transform="default")
+
+            if self.role == "client":
+                X_filled = self.module.initial_imputer_.fit_transform(X)
+            elif self.role == "server":
+                self.module.initial_imputer_.fit()
+        elif self.role == "client":
+            X_filled = self.module.initial_imputer_.transform(X)
+
+        valid_mask = np.logical_not(
+            np.isnan(self.module.initial_imputer_.module.statistics_)
+        )
+
+        if self.role == "client":
+            if not self.module.keep_empty_features:
+                # drop empty features
+                Xt = X[:, valid_mask]
+                mask_missing_values = mask_missing_values[:, valid_mask]
+            else:
+                # mark empty features as not missing and keep the original
+                # imputation
+                mask_missing_values[:, valid_mask] = True
+                Xt = X
+            return Xt, X_filled, mask_missing_values, X_missing_mask, valid_mask
+
+        elif self.role == "server":
+            return valid_mask
+
+    def _H_get_ordered_idx_client(self, mask_missing_values):
+        if self.module.skip_complete or self.module.imputation_order in (
+            "ascending",
+            "descending",
+        ):
+            col_missing_sum = np.sum(mask_missing_values, axis=0)
+            self.channel.send("col_missing_sum", col_missing_sum)
+
+        if not self.module.skip_complete and self.module.imputation_order in (
+            "roman",
+            "arabic",
+        ):
+            missing_values_idx = np.arange(mask_missing_values.shape[1])
+            if self.module.imputation_order == "arabic":
+                missing_values_idx = missing_values_idx[::-1]
+            return missing_values_idx
+
+        ordered_idx = self.channel.recv("ordered_idx")
+        return ordered_idx
+
+    def _H_get_ordered_idx_server(self, n_features):
+        if self.module.skip_complete or self.module.imputation_order in (
+            "ascending",
+            "descending",
+        ):
+            col_missing_sum = sum(self.channel.recv_all("col_missing_sum"))
+            missing_values_idx = np.flatnonzero(col_missing_sum)
+        else:
+            missing_values_idx = np.arange(n_features)
+
+        if not self.module.skip_complete and self.module.imputation_order in (
+            "roman",
+            "arabic",
+        ):
+            if self.module.imputation_order == "roman":
+                return missing_values_idx
+            else:  # "arabic"
+                return missing_values_idx[::-1]
+
+        if self.module.imputation_order == "roman":
+            ordered_idx = missing_values_idx
+        elif self.module.imputation_order == "arabic":
+            ordered_idx = missing_values_idx[::-1]
+        elif self.module.imputation_order == "ascending":
+            n = len(col_missing_sum) - len(missing_values_idx)
+            ordered_idx = np.argsort(col_missing_sum, kind="mergesort")[n:]
+        elif self.module.imputation_order == "descending":
+            n = len(col_missing_sum) - len(missing_values_idx)
+            ordered_idx = np.argsort(col_missing_sum, kind="mergesort")[n:][::-1]
+        elif self.module.imputation_order == "random":
+            ordered_idx = missing_values_idx
+            self.module.random_state_.shuffle(ordered_idx)
+
+        self.channel.send_all("ordered_idx", ordered_idx)
+        return ordered_idx
+
+    def _V_get_ordered_idx_client(self, missing_values_idx, col_missing_sum):
+        if self.module.imputation_order in (
+            "roman",
+            "arabic",
+        ):
+            local_idx = missing_values_idx
+            if self.module.imputation_order == "arabic":
+                local_idx = local_idx[::-1]
+
+            start_idx = self.channel.recv("start_idx")
+            ordered_idx = np.arange(start_idx, start_idx + len(missing_values_idx))
+
+        else:  # "random", "ascending", "descending"
+            ordered_idx = self.channel.recv("client_ordered_idx")
+
+            if self.module.imputation_order == "random":
+                local_idx = np.argsort(ordered_idx)
+            else:
+                n = len(col_missing_sum) - len(missing_values_idx)
+                local_idx = np.argsort(col_missing_sum, kind="mergesort")[n:]
+                if self.module.imputation_order == "descending":
+                    local_idx = local_idx[::-1]
+
+            ordered_idx = np.sort(ordered_idx)
+
+        return ordered_idx, local_idx
+
+    def _V_get_ordered_idx_server(self, client_n_features, col_missing_sum):
+        n_client = self.channel.n_client
+
+        if self.module.imputation_order in (
+            "roman",
+            "arabic",
+        ):
+            client_start_idx = np.zeros(n_client, dtype=int)
+            count = 0
+            for i in range(n_client):
+                ci = n_client - 1 - i if self.module.imputation_order == "arabic" else i
+                client_start_idx[ci] = count
+                count += client_n_features[ci]
+            self.channel.send_all_diff("start_idx", client_start_idx)
+
+            ordered_idx = np.arange(len(col_missing_sum))
+            if self.module.imputation_order == "arabic":
+                ordered_idx = ordered_idx[::-1]
+
+        else:  # "random", "ascending", "descending"
+            if self.module.imputation_order == "random":
+                n_features = len(col_missing_sum)
+                ordered_idx = np.arange(n_features)
+                self.module.random_state_.shuffle(ordered_idx)
+            else:
+                ordered_idx = np.argsort(col_missing_sum, kind="mergesort")
+                if self.module.imputation_order == "descending":
+                    ordered_idx = ordered_idx[::-1]
+
+            client_ordered_idx = []
+            start = 0
+            for cn in client_n_features:
+                end = start + cn
+                client_ordered_idx.append(ordered_idx[start:end])
+                start = end
+            self.channel.send_all_diff("client_ordered_idx", client_ordered_idx)
+
+        return ordered_idx
+
+    def _H_impute_one_feature_server(self):
+        estimator = clone(self.module._estimator)
+        estimator.fit()
+        return estimator
+
+    def _V_impute_one_feature_client(
+        self,
+        X_filled,
+        global_i,
+        mask_missing_values,
+        feat_idx,
+        neighbor_feat_idx,
+        estimator=None,
+        fit_mode=True,
+    ):
+        if estimator is None and fit_mode is False:
+            raise ValueError(
+                "If fit_mode is False, then an already-fitted "
+                "estimator should be passed in."
+            )
+
+        if estimator is None:
+            estimator = clone(self.module._estimator)
+
+        missing_row_mask = mask_missing_values[:, global_i]
+        if fit_mode:
+            X_train = _safe_indexing(
+                _safe_indexing(X_filled, neighbor_feat_idx, axis=1),
+                ~missing_row_mask,
+                axis=0,
+            )
+
+            # Edge case: client only has y and has no features
+            if X_train.size == 0:
+                X_train = None
+
+            if feat_idx is not None:
+                y_train = _safe_indexing(
+                    _safe_indexing(X_filled, feat_idx, axis=1),
+                    ~missing_row_mask,
+                    axis=0,
+                )
+            else:
+                y_train = None
+
+            estimator.fit(X_train, y_train)
+
+        # if no missing values, don't predict
+        if np.sum(missing_row_mask) == 0:
+            return X_filled, estimator
+
+        # get posterior samples if there is at least one missing value
+        X_test = _safe_indexing(
+            _safe_indexing(X_filled, neighbor_feat_idx, axis=1),
+            missing_row_mask,
+            axis=0,
+        )
+
+        # Edge case: client only has y and has no features
+        if X_test.size == 0:
+            X_test = None
+
+        imputed_values = estimator.predict(X_test)
+        if feat_idx is not None:
+            imputed_values = np.clip(
+                imputed_values,
+                self.module._min_value[feat_idx],
+                self.module._max_value[feat_idx],
+            )
+
+            # update the feature
+            _safe_assign(
+                X_filled,
+                imputed_values,
+                row_indexer=missing_row_mask,
+                column_indexer=feat_idx,
+            )
+        return X_filled, estimator
+
+    def _V_impute_one_feature_server(
+        self,
+        global_i,
+        mask_missing_values,
+        estimator=None,
+        fit_mode=True,
+    ):
+        if estimator is None and fit_mode is False:
+            raise ValueError(
+                "If fit_mode is False, then an already-fitted "
+                "estimator should be passed in."
+            )
+
+        if estimator is None:
+            estimator = clone(self.module._estimator)
+
+        if fit_mode:
+            estimator.fit()
+
+        missing_row_mask = mask_missing_values[:, global_i]
+        # if no missing values, don't predict
+        if np.sum(missing_row_mask) == 0:
+            return estimator
+
+        estimator.predict()
+        return estimator
+
+    def fit_transform(self, X=None):
+        if self.FL_type == "V":
+            return self.Vfit_transform(X)
+        else:
+            return self.Hfit_transform(X)
+
+    def Hfit_transform(self, X):
+        self.module.random_state_ = getattr(
+            self.module, "random_state_", check_random_state(self.module.random_state)
+        )
+
+        if self.module.estimator is None:
+            from ..model import BayesianRidge
+
+            self.module._estimator = BayesianRidge(
+                FL_type="H",
+                role=self.role,
+                channel=self.channel,
+            )
+        else:
+            self.module._estimator = clone(self.module.estimator)
+
+        self.module.imputation_sequence_ = []
+
+        self.module.initial_imputer_ = None
+
+        if self.role == "client":
+            X, Xt, mask_missing_values, complete_mask, valid_mask = (
+                self._initial_imputation(X, in_fit=True)
+            )
+
+            valid_n_features = sum(valid_mask)
+
+            self.module._fit_indicator(complete_mask)
+            X_indicator = self.module._transform_indicator(complete_mask)
+
+            if self.module.max_iter == 0 or valid_n_features <= 1:
+                self.module.n_iter_ = 0
+                return self.module._concatenate_indicator(Xt, X_indicator)
+
+            n_features = Xt.shape[1]
+            self.module._min_value = self.module._validate_limit(
+                self.module.min_value, "min", n_features
+            )
+            self.module._max_value = self.module._validate_limit(
+                self.module.max_value, "max", n_features
+            )
+
+            if not np.all(np.greater(self.module._max_value, self.module._min_value)):
+                raise ValueError("One (or more) features have min_value >= max_value.")
+
+            ordered_idx = self._H_get_ordered_idx_client(mask_missing_values)
+
+        elif self.role == "server":
+            valid_mask = self._initial_imputation(X=None, in_fit=True)
+            valid_n_features = sum(valid_mask)
+
+            if self.module.max_iter == 0 or valid_n_features <= 1:
+                self.module.n_iter_ = 0
+                return
+
+            if self.module.keep_empty_features:
+                n_features = valid_mask.shape[0]
+            else:
+                n_features = valid_n_features
+
+            ordered_idx = self._H_get_ordered_idx_server(n_features)
+
+        self.module.n_features_with_missing_ = len(ordered_idx)
+
+        if self.module.verbose > 0:
+            if self.role == "client":
+                n_samples = Xt.shape[0]
+                self.channel.send("n_samples", n_samples)
+            elif self.role == "server":
+                n_samples = sum(self.channel.recv_all("n_samples"))
+            print(
+                f"[IterativeImputer] Completing matrix with shape {(n_samples, n_features)}"
+            )
+
+        if self.role == "client":
+            Xt_previous = Xt.copy()
+            max_abs = np.max(np.abs(X[~mask_missing_values]))
+            self.channel.send("max_abs", max_abs)
+        elif self.role == "server":
+            max_abs = max(self.channel.recv_all("max_abs"))
+            normalized_tol = self.module.tol * max_abs
+
+        start_t = time()
+
+        for self.module.n_iter_ in range(1, self.module.max_iter + 1):
+            if self.module.imputation_order == "random":
+                if self.role == "client":
+                    ordered_idx = self._H_get_ordered_idx_client(mask_missing_values)
+                elif self.role == "server":
+                    ordered_idx = self._H_get_ordered_idx_server(n_features)
+
+            for feat_idx in ordered_idx:
+                neighbor_feat_idx = self.module._get_neighbor_feat_idx(
+                    n_features, feat_idx, abs_corr_mat=None
+                )
+
+                if self.role == "client":
+                    Xt, estimator = self.module._impute_one_feature(
+                        Xt,
+                        mask_missing_values,
+                        feat_idx,
+                        neighbor_feat_idx,
+                        estimator=None,
+                        fit_mode=True,
+                    )
+                elif self.role == "server":
+                    estimator = self._H_impute_one_feature_server()
+
+                estimator_triplet = _ImputerTriplet(
+                    feat_idx, neighbor_feat_idx, estimator
+                )
+                self.module.imputation_sequence_.append(estimator_triplet)
+
+            if self.module.verbose > 1:
+                print(
+                    "[IterativeImputer] Ending imputation round "
+                    "%d/%d, elapsed time %0.2f"
+                    % (self.module.n_iter_, self.module.max_iter, time() - start_t)
+                )
+
+            if self.role == "client":
+                col_norm_client(
+                    Xt - Xt_previous,
+                    norm="l1",
+                    ignore_nan=False,
+                    channel=self.channel,
+                    send_server=True,
+                    recv_server=False,
+                )
+                early_stop = self.channel.recv("early_stop")
+
+            elif self.role == "server":
+                inf_norm = col_norm_server(
+                    norm="l1",
+                    ignore_nan=False,
+                    channel=self.channel,
+                    send_client=False,
+                    recv_client=True,
+                )
+                inf_norm = max(inf_norm)
+                if self.module.verbose > 0:
+                    print(
+                        "[IterativeImputer] Change: {}, scaled tolerance: {} ".format(
+                            inf_norm, normalized_tol
+                        )
+                    )
+                early_stop = inf_norm < normalized_tol
+                self.channel.send_all("early_stop", early_stop)
+
+            if early_stop:
+                if self.module.verbose > 0:
+                    print("[IterativeImputer] Early stopping criterion reached.")
+                break
+            if self.role == "client":
+                Xt_previous = Xt.copy()
+        else:
+            warnings.warn(
+                "[IterativeImputer] Early stopping criterion not reached.",
+                ConvergenceWarning,
+            )
+
+        if self.role == "client":
+            _assign_where(Xt, X, cond=~mask_missing_values)
+            return self.module._concatenate_indicator(Xt, X_indicator)
+
+    def Vfit_transform(self, X):
+        self.module.random_state_ = getattr(
+            self.module, "random_state_", check_random_state(self.module.random_state)
+        )
+
+        if self.module.estimator is None:
+            from ..model import BayesianRidge
+
+            self.module._estimator = BayesianRidge(
+                FL_type="V",
+                role=self.role,
+                channel=self.channel,
+            )
+        else:
+            self.module._estimator = clone(self.module.estimator)
+
+        self.module.imputation_sequence_ = []
+
+        self.module.initial_imputer_ = None
+
+        if self.role == "client":
+            X, Xt, mask_missing_values, complete_mask, valid_mask = (
+                self._initial_imputation(X, in_fit=True)
+            )
+
+            valid_n_features = sum(valid_mask)
+            self.channel.send("valid_n_features", valid_n_features)
+            valid_n_features = self.channel.recv("valid_n_features")
+
+            self.module._fit_indicator(complete_mask)
+            X_indicator = self.module._transform_indicator(complete_mask)
+
+            if self.module.max_iter == 0 or valid_n_features <= 1:
+                self.module.n_iter_ = 0
+                return self.module._concatenate_indicator(Xt, X_indicator)
+
+            n_features = Xt.shape[1]
+
+            self.module._min_value = self.module._validate_limit(
+                self.module.min_value, "min", n_features
+            )
+            self.module._max_value = self.module._validate_limit(
+                self.module.max_value, "max", n_features
+            )
+
+            if not np.all(np.greater(self.module._max_value, self.module._min_value)):
+                raise ValueError("One (or more) features have min_value >= max_value.")
+
+            col_missing_sum = np.sum(mask_missing_values, axis=0)
+            if self.module.skip_complete:
+                missing_values_idx = np.flatnonzero(col_missing_sum)
+            else:
+                missing_values_idx = np.arange(col_missing_sum.shape[0])
+            self.missing_values_idx = missing_values_idx
+
+            self.channel.send(
+                "mask_missing_values", mask_missing_values[:, missing_values_idx]
+            )
+
+            ordered_idx, local_idx = self._V_get_ordered_idx_client(
+                missing_values_idx, col_missing_sum
+            )
+            self.module.n_features_with_missing_ = len(ordered_idx)
+
+            client_mask_missing_values = self.channel.recv("client_mask_missing_values")
+
+        elif self.role == "server":
+            client_valid_n_features = self.channel.recv_all("valid_n_features")
+            valid_n_features = sum(client_valid_n_features)
+            self.channel.send_all("valid_n_features", valid_n_features)
+
+            if self.module.max_iter == 0 or valid_n_features <= 1:
+                self.module.n_iter_ = 0
+                return
+
+            client_mask_missing_values = self.channel.recv_all("mask_missing_values")
+            client_n_features = [mask.shape[1] for mask in client_mask_missing_values]
+            n_features = sum(client_n_features)
+            client_mask_missing_values = np.hstack(client_mask_missing_values)
+            col_missing_sum = client_mask_missing_values.sum(axis=0)
+
+            ordered_idx = self._V_get_ordered_idx_server(
+                client_n_features, col_missing_sum
+            )
+
+            if self.module.imputation_order != "random":
+                self.ordered_idx = ordered_idx
+                client_mask_missing_values = client_mask_missing_values[:, ordered_idx]
+            self.channel.send_all(
+                "client_mask_missing_values", client_mask_missing_values
+            )
+
+        if self.module.verbose > 0:
+            n_samples = client_mask_missing_values.shape[0]
+            print(
+                f"[IterativeImputer] Completing matrix with shape {(n_samples, n_features)}"
+            )
+
+        if self.role == "client":
+            Xt_previous = Xt.copy()
+            max_abs = np.max(np.abs(X[~mask_missing_values]))
+            self.channel.send("max_abs", max_abs)
+        elif self.role == "server":
+            max_abs = max(self.channel.recv_all("max_abs"))
+            normalized_tol = self.module.tol * max_abs
+
+        start_t = time()
+
+        if self.module.imputation_order == "random":
+            self.ordered_idx = []
+
+        for self.module.n_iter_ in range(1, self.module.max_iter + 1):
+            if self.module.imputation_order == "random":
+                if self.role == "client":
+                    ordered_idx, local_idx = self._V_get_ordered_idx_client(
+                        missing_values_idx, col_missing_sum
+                    )
+                    shuffle_idx = self.channel.recv("shuffle_idx")
+                elif self.role == "server":
+                    shuffle_idx = self._V_get_ordered_idx_server(
+                        client_n_features, col_missing_sum
+                    )
+                    self.channel.send_all("shuffle_idx", shuffle_idx)
+
+                client_mask_all = client_mask_missing_values[:, shuffle_idx]
+                self.ordered_idx.append(shuffle_idx)
+            else:
+                client_mask_all = client_mask_missing_values
+
+            if self.role == "client":
+                i = 0
+            for global_i in range(client_mask_missing_values.shape[1]):
+                if self.role == "client":
+                    if i < n_features:
+                        order = ordered_idx[i]
+                    if order == global_i:
+                        feat_idx = local_idx[i]
+                        neighbor_feat_idx = self.module._get_neighbor_feat_idx(
+                            n_features, feat_idx, abs_corr_mat=None
+                        )
+                        i += 1
+                    else:
+                        feat_idx = None
+                        neighbor_feat_idx = np.arange(n_features)
+
+                    Xt, estimator = self._V_impute_one_feature_client(
+                        Xt,
+                        global_i,
+                        client_mask_all,
+                        feat_idx,
+                        neighbor_feat_idx,
+                        estimator=None,
+                        fit_mode=True,
+                    )
+
+                elif self.role == "server":
+                    feat_idx = ordered_idx[global_i]
+                    neighbor_feat_idx = self.module._get_neighbor_feat_idx(
+                        n_features, feat_idx, abs_corr_mat=None
+                    )
+
+                    estimator = self._V_impute_one_feature_server(
+                        global_i,
+                        client_mask_all,
+                        estimator=None,
+                        fit_mode=True,
+                    )
+
+                estimator_triplet = _ImputerTriplet(
+                    feat_idx, neighbor_feat_idx, estimator
+                )
+                self.module.imputation_sequence_.append(estimator_triplet)
+
+            if self.module.verbose > 1:
+                print(
+                    "[IterativeImputer] Ending imputation round "
+                    "%d/%d, elapsed time %0.2f"
+                    % (self.module.n_iter_, self.module.max_iter, time() - start_t)
+                )
+
+            if self.role == "client":
+                inf_norm = np.linalg.norm(Xt - Xt_previous, ord=np.inf, axis=None)
+                self.channel.send("inf_norm", inf_norm)
+                early_stop = self.channel.recv("early_stop")
+
+            elif self.role == "server":
+                inf_norm = self.channel.recv_all("inf_norm")
+                inf_norm = max(inf_norm)
+                if self.module.verbose > 0:
+                    print(
+                        "[IterativeImputer] Change: {}, scaled tolerance: {} ".format(
+                            inf_norm, normalized_tol
+                        )
+                    )
+                early_stop = inf_norm < normalized_tol
+                self.channel.send_all("early_stop", early_stop)
+
+            if early_stop:
+                if self.module.verbose > 0:
+                    print("[IterativeImputer] Early stopping criterion reached.")
+                break
+            if self.role == "client":
+                Xt_previous = Xt.copy()
+        else:
+            warnings.warn(
+                "[IterativeImputer] Early stopping criterion not reached.",
+                ConvergenceWarning,
+            )
+
+        if self.role == "client":
+            _assign_where(Xt, X, cond=~mask_missing_values)
+            return self.module._concatenate_indicator(Xt, X_indicator)
+
+    def transform(self, X=None):
+        if self.FL_type == "V":
+            return self.Vtransform(X)
+        else:
+            return self.module.transform(X)
+
+    def Vtransform(self, X):
+        check_is_fitted(self.module)
+
+        if self.role == "client":
+            X, Xt, mask_missing_values, complete_mask, valid_mask = (
+                self._initial_imputation(X, in_fit=False)
+            )
+
+            n_samples, n_features = Xt.shape
+
+            valid_n_features = sum(valid_mask)
+            self.channel.send("valid_n_features", valid_n_features)
+            valid_n_features = self.channel.recv("valid_n_features")
+
+            X_indicator = self.module._transform_indicator(complete_mask)
+
+            if self.module.n_iter_ == 0 or valid_n_features == 0:
+                return self.module._concatenate_indicator(Xt, X_indicator)
+
+            self.channel.send(
+                "mask_missing_values", mask_missing_values[:, self.missing_values_idx]
+            )
+
+        elif self.role == "server":
+            client_valid_n_features = self.channel.recv_all("valid_n_features")
+            valid_n_features = sum(client_valid_n_features)
+            self.channel.send_all("valid_n_features", valid_n_features)
+
+            if self.module.n_iter_ == 0 or valid_n_features == 0:
+                return
+
+            client_mask_missing_values = self.channel.recv_all("mask_missing_values")
+            client_mask_missing_values = np.hstack(client_mask_missing_values)
+
+            if self.module.imputation_order != "random":
+                client_mask_missing_values = client_mask_missing_values[
+                    :, self.ordered_idx
+                ]
+            self.channel.send_all(
+                "client_mask_missing_values", client_mask_missing_values
+            )
+
+            n_samples, n_features = client_mask_missing_values.shape
+
+        imputations_per_round = (
+            len(self.module.imputation_sequence_) // self.module.n_iter_
+        )
+        i_rnd = 0
+
+        if self.module.verbose > 0:
+            print(
+                f"[IterativeImputer] Completing matrix with shape {(n_samples, n_features)}"
+            )
+
+        start_t = time()
+        for it, estimator_triplet in enumerate(self.module.imputation_sequence_):
+            if self.module.imputation_order == "random":
+                if self.role == "client":
+                    shuffle_idx = self.channel.recv("shuffle_idx")
+                elif self.role == "server":
+                    shuffle_idx = self.ordered_idx[it]
+                    self.channel.send_all("shuffle_idx", shuffle_idx)
+                client_mask_all = client_mask_missing_values[:, shuffle_idx]
+            else:
+                client_mask_all = client_mask_missing_values
+
+            if self.role == "client":
+                Xt, _ = self._V_impute_one_feature_client(
+                    Xt,
+                    it,
+                    client_mask_all,
+                    estimator_triplet.feat_idx,
+                    estimator_triplet.neighbor_feat_idx,
+                    estimator=estimator_triplet.estimator,
+                    fit_mode=False,
+                )
+
+            elif self.role == "server":
+                self._V_impute_one_feature_server(
+                    it,
+                    client_mask_all,
+                    estimator=None,
+                    fit_mode=False,
+                )
+
+            if not (it + 1) % imputations_per_round:
+                if self.module.verbose > 1:
+                    print(
+                        "[IterativeImputer] Ending imputation round "
+                        "%d/%d, elapsed time %0.2f"
+                        % (i_rnd + 1, self.module.n_iter_, time() - start_t)
+                    )
+                i_rnd += 1
+
+        if self.role == "client":
+            _assign_where(Xt, X, cond=~mask_missing_values)
+            return self.module._concatenate_indicator(Xt, X_indicator)
 
 
 class KNNImputer(_PreprocessBase):

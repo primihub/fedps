@@ -1,5 +1,8 @@
 # FedPS: Federated data Preprocessing via aggregated Statistics
 
+This repository implements federated data preprocessing methods.
+Experiments on the impact of different preprocessing strategies in federated learning are available at https://github.com/xuefeng-xu/fl-tabular.
+
 The workflow consists of five steps:
 ① Compute local statistics;
 ② Share and aggregate statistics;
@@ -163,3 +166,7 @@ PS: See more cases in the [example](example) folder.
 ## Acknowledgement
 
 This project is build on [Scikit-learn](https://github.com/scikit-learn/scikit-learn).
+
+## License
+
+[BSD-3-Clause License](COPYING)
